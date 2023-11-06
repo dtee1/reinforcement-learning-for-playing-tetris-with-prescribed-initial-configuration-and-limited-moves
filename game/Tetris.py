@@ -50,7 +50,7 @@ class Tetris:
     def __get_initial_config(self):
         return np.full((20, 10), False, dtype=bool), [randint(0, 6) for _ in range(2)]
     
-    def get_info(self):
+    def get_state(self):
         return self.board, self.pieces[0], self.pieces[1], self.L - self.lines_cleared, self.M - self.moves_used, self.state
 
     def move(self, rotations: int, location: int):
