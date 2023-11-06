@@ -2,33 +2,39 @@ import numpy as np
 from random import randint, getrandbits
 
 tetrominos = (
-    np.array(((False,False,False,False),
-    (True,True,True,True),
-    (False,False,False,False),
-    (False,False,False,False)), dtype=bool),
-
-    np.array(((True,True),
-    (True,True)), dtype=bool),
-
-    np.array(((False,True,False),
-    (True,True,True),
-    (False,False,False)), dtype=bool),
-
-    np.array(((False,True,True),
-    (True,True,False),
-    (False,False,False)), dtype=bool),
-
-    np.array(((True,True,False),
-    (False,True,True),
-    (False,False,False)), dtype=bool),
-
-    np.array(((True,False,False),
-    (True,True,True),
-    (False,False,False)), dtype=bool),
-    
-    np.array(((False,False,True),
-    (True,True,True),
-    (False,False,False)), dtype=bool)
+    (
+        (np.array(((True,True,True,True),), dtype=bool), (0,0,0,0)),
+        (np.array(((True,),(True,),(True,),(True,)), dtype=bool), (3,))
+    ),
+    (
+        (np.array(((False,False,True),(True,True,True)), dtype=bool), (1,1,1)),
+        (np.array(((True,True),(False,True),(False,True)), dtype=bool), (0,2)),
+        (np.array(((True,True,True),(True,False,False)), dtype=bool), (1,0,0)),
+        (np.array(((True,False),(True,False),(True,True)), dtype=bool), (2,2))
+    ),
+    (
+        (np.array(((True,False,False),(True,True,True)), dtype=bool), (1,1,1)),
+        (np.array(((False,True),(False,True),(True,True)), dtype=bool), (2,2)),
+        (np.array(((True,True,True),(False,False,True)), dtype=bool), (0,0,1)),
+        (np.array(((True,True),(True,False),(True,False)), dtype=bool), (2,0))
+    ),
+    (
+        (np.array(((False,True,False),(True,True,True)), dtype=bool), (1,1,1)),
+        (np.array(((False,True),(True,True),(False,True)), dtype=bool), (1,2)),
+        (np.array(((True,True,True),(False,True,False)), dtype=bool), (0,1,0)),
+        (np.array(((True,False),(True,True),(True,False)), dtype=bool), (2,1))
+    ),
+    (
+        (np.array(((False,True,True),(True,True,False)), dtype=bool), (1,1,0)),
+        (np.array(((True,False),(True,True),(False,True)), dtype=bool), (1,2))
+    ),
+    (
+        (np.array(((True,True,False),(False,True,True)), dtype=bool), (0,1,1)),
+        (np.array(((False,True),(True,True),(True,False)), dtype=bool), (2,1))
+    ),
+    (
+        (np.array(((True,True),(True,True)), dtype=bool), (1,1)),
+    )
 )
 
 class Tetris:
@@ -41,36 +47,23 @@ class Tetris:
         self.state = None
         self.random_pieces = random_pieces
 
-    def __get_initial_config(self):
+    def __get_initial_config(self) -> tuple[np.array, tuple[int, ...]]:
         return np.full((20, 10), False, dtype=bool), [randint(0, 6) for _ in range(2)]
     
-    def get_info(self):
+    def get_state(self) -> tuple[np.array, int, int, int, int, bool]:
         return self.board, self.pieces[0], self.pieces[1], self.L - self.lines_cleared, self.M - self.moves_used, self.state
 
-    def move(self, rotations: int, location: int):
+    def move(self, rotations: int, location: int) -> None:
         piece = self.pieces.pop(0)
         if self.random_pieces:
             self.pieces.append(bool(getrandbits(1)))
 
-        tetromino = tetrominos[piece]
-
-        # Rotate the piece counterclockwise
-        tetromino = np.rot90(tetromino, rotations)
-
-        # Truncate the tetromino
-        rows_with_true = np.any(tetromino, axis=1)
-        cols_with_true = np.any(tetromino, axis=0)
-        tetromino = tetromino[rows_with_true][:, cols_with_true]
+        tetromino, reverse_tetromino_topography = tetrominos[piece][rotations % len(tetrominos[piece])]
 
         # Ensure the location is not out of bounds horizontally
         tetromino_width = tetromino.shape[1]
         location = min(location, 10-tetromino_width)
-
-        # Calculate drop
-        reverse_tetromino_topography = []
-        for col in tetromino.T:
-            reverse_tetromino_topography.append(np.where(col)[0][-1])
-
+        
         board_topography = []
         for col in self.board.T[location:location+tetromino_width, :]:
             result = np.where(col)[0]
@@ -82,7 +75,7 @@ class Tetris:
         # Check if out of bounds
         if drop < 0:
             self.state = False
-            return False
+            return
 
         # Insert Block
         self.board[drop:drop + tetromino.shape[0], location:location + tetromino_width] = tetromino
@@ -98,7 +91,7 @@ class Tetris:
         if rows_cleared == 0:
             if self.moves_used >= self.M:
                 self.state = False
-            return False
+            return
         
         indices_to_clear = []
 
@@ -119,5 +112,6 @@ class Tetris:
 
         if self.moves_used >= self.M:
                 self.state = False
-    def reset(self):
+            
+    def reset(self) -> None:
         self.__init__(self.L, self.M, random_pieces=self.random_pieces)
