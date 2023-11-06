@@ -47,13 +47,13 @@ class Tetris:
         self.state = None
         self.random_pieces = random_pieces
 
-    def __get_initial_config(self):
+    def __get_initial_config(self) -> tuple[np.array, tuple[int, ...]]:
         return np.full((20, 10), False, dtype=bool), [randint(0, 6) for _ in range(2)]
     
-    def get_state(self):
+    def get_state(self) -> tuple[np.array, int, int, int, int, bool]:
         return self.board, self.pieces[0], self.pieces[1], self.L - self.lines_cleared, self.M - self.moves_used, self.state
 
-    def move(self, rotations: int, location: int):
+    def move(self, rotations: int, location: int) -> None:
         piece = self.pieces.pop(0)
         if self.random_pieces:
             self.pieces.append(bool(getrandbits(1)))
@@ -75,7 +75,7 @@ class Tetris:
         # Check if out of bounds
         if drop < 0:
             self.state = False
-            return False
+            return
 
         # Insert Block
         self.board[drop:drop + tetromino.shape[0], location:location + tetromino_width] = tetromino
@@ -91,7 +91,7 @@ class Tetris:
         if rows_cleared == 0:
             if self.moves_used >= self.M:
                 self.state = False
-            return False
+            return
         
         indices_to_clear = []
 
@@ -112,5 +112,5 @@ class Tetris:
 
         if self.moves_used >= self.M:
                 self.state = False
-    def reset(self):
+    def reset(self) -> None:
         self.__init__(self.L, self.M, random_pieces=self.random_pieces)
