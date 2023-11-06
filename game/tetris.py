@@ -63,7 +63,7 @@ class Tetris:
         # Ensure the location is not out of bounds horizontally
         tetromino_width = tetromino.shape[1]
         location = min(location, 10-tetromino_width)
-
+        
         board_topography = []
         for col in self.board.T[location:location+tetromino_width, :]:
             result = np.where(col)[0]
@@ -112,5 +112,6 @@ class Tetris:
 
         if self.moves_used >= self.M:
                 self.state = False
+            
     def reset(self) -> None:
         self.__init__(self.L, self.M, random_pieces=self.random_pieces)
