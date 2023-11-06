@@ -2,33 +2,39 @@ import numpy as np
 from random import randint, getrandbits
 
 tetrominos = (
-    np.array(((False,False,False,False),
-    (True,True,True,True),
-    (False,False,False,False),
-    (False,False,False,False)), dtype=bool),
-
-    np.array(((True,True),
-    (True,True)), dtype=bool),
-
-    np.array(((False,True,False),
-    (True,True,True),
-    (False,False,False)), dtype=bool),
-
-    np.array(((False,True,True),
-    (True,True,False),
-    (False,False,False)), dtype=bool),
-
-    np.array(((True,True,False),
-    (False,True,True),
-    (False,False,False)), dtype=bool),
-
-    np.array(((True,False,False),
-    (True,True,True),
-    (False,False,False)), dtype=bool),
-    
-    np.array(((False,False,True),
-    (True,True,True),
-    (False,False,False)), dtype=bool)
+    (
+        np.array([(True,True,True,True)], dtype=bool),
+        np.array(([True],[True],[True],[True]), dtype=bool)
+    ),
+    (
+        np.array(((False,False,True),(True,True,True)), dtype=bool),
+        np.array(((True,True),(False,True),(False,True)), dtype=bool),
+        np.array(((True,True,True),(True,False,False)), dtype=bool),
+        np.array(((True,False),(True,False),(True,True)), dtype=bool)
+    ),
+    (
+        np.array(((True,False,False),(True,True,True)), dtype=bool),
+        np.array(((False,True),(False,True),(True,True)), dtype=bool),
+        np.array(((True,True,True),(False,False,True)), dtype=bool),
+        np.array(((True,True),(True,False),(True,False)), dtype=bool)
+    ),
+    (
+        np.array(((False,True,False),(True,True,True)), dtype=bool),
+        np.array(((False,True),(True,True),(False,True)), dtype=bool),
+        np.array(((True,True,True),(False,True,False)), dtype=bool),
+        np.array(((True,False),(True,True),(True,False)), dtype=bool)
+    ),
+    (
+        np.array(((False,True,True),(True,True,False)), dtype=bool),
+        np.array(((True,False),(True,True),(False,True)), dtype=bool),
+    ),
+    (
+        np.array(((True,True,False),(False,True,True)), dtype=bool),
+        np.array(((False,True),(True,True),(True,False)), dtype=bool),
+    ),
+    [
+        np.array(((True,True),(True,True)), dtype=bool)
+    ]
 )
 
 class Tetris:
@@ -52,15 +58,7 @@ class Tetris:
         if self.random_pieces:
             self.pieces.append(bool(getrandbits(1)))
 
-        tetromino = tetrominos[piece]
-
-        # Rotate the piece counterclockwise
-        tetromino = np.rot90(tetromino, rotations)
-
-        # Truncate the tetromino
-        rows_with_true = np.any(tetromino, axis=1)
-        cols_with_true = np.any(tetromino, axis=0)
-        tetromino = tetromino[rows_with_true][:, cols_with_true]
+        tetromino = tetrominos[piece][rotations % len(tetrominos[piece])]
 
         # Ensure the location is not out of bounds horizontally
         tetromino_width = tetromino.shape[1]
