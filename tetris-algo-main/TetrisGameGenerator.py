@@ -19,10 +19,8 @@ class TetrisGameGenerator:
         self.tetrominoes = tetrominoes
         self.initial_height_max = initial_height_max
         self.board = np.zeros((self.height, self.width), dtype=int)
-        self.winnable = False
         self.tetrominoes_names = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
 
-        # the higher the density the more compact the tetrominoes will be placed 0-9
         self.density = 9
 
         random.seed(self.seed)
@@ -62,10 +60,15 @@ class TetrisGameGenerator:
         self.board = np.vstack([np.zeros((np.sum(full_rows), self.width), dtype=int), self.board[~full_rows]])
 
     def evaluate_columns(self, tetromino):
-        columns_to_try = list(range(self.width - len(tetromino[0]) + 1))
-        columns_to_try.sort(key=lambda col: -self.calculate_placement_height(tetromino, col))
+        columns_to_try = [col for col in range(self.width - len(tetromino[0]) + 1)]
 
-        return columns_to_try
+        best_column, best_placement_height = min(
+            ((col, self.calculate_placement_height(tetromino, col)) for col in columns_to_try),
+            key=lambda x: -x[1]
+        )
+
+        return best_column, best_placement_height
+
 
     def calculate_placement_height(self, tetromino, col):
         shape = np.array(tetromino)
@@ -79,16 +82,19 @@ class TetrisGameGenerator:
 
 
     def fill_grid(self):
-        for _ in range(40):
+        while True:
+            # Randomly select a tetromino
             tetromino = random.choice(self.tetrominoes_names)
+            # Randomly select a rotation
             rotation = random.randint(0, len(self.tetromino_shapes[tetromino]) - 1)
-            tetromino = self.rotate_tetromino(self.tetromino_shapes[tetromino], rotation)
-            col_to_try = self.evaluate_columns(tetromino)[9 - self.density]
-            if(self.is_valid_move(tetromino, 0, col_to_try)):
-                if(self.height + 1 - self.calculate_placement_height(tetromino, col_to_try) <= self.initial_height_max):
-                    self.place_tetromino(tetromino, 0, col_to_try)
+            shape = self.rotate_tetromino(self.tetromino_shapes[tetromino], rotation)
+            col_to_try, placement_height = self.evaluate_columns(shape)
+            if self.is_valid_move(shape, 0, col_to_try):
+                if self.height + 1 - placement_height <= self.initial_height_max:
+                    self.place_tetromino(shape, 0, col_to_try)
                 else:
                     break
+
 
 
 
@@ -117,7 +123,21 @@ class TetrisGameGenerator:
             print()
 
 
-if __name__ == '__main__':
-    game = TetrisGameGenerator(seed=1, goal=10, tetrominoes=40)
+def generate_board_and_sequence(seed, tetrominoes, initial_height_max, goal=0):
+    game = TetrisGameGenerator(seed=seed, goal=goal, tetrominoes=tetrominoes,initial_height_max= initial_height_max)
+    return game.board, game.sequence
+
+
+
+
+def main():
+    for i in range(1000):
+        board, sequence = generate_board_and_sequence(i, 40, 7)
+
+    game = TetrisGameGenerator(seed=0, goal=15, tetrominoes=40, initial_height_max=7)
     game.print_grid()
     print(game.sequence)
+
+if __name__ == "__main__":
+    import cProfile
+    cProfile.run('main()', sort='cumulative')
