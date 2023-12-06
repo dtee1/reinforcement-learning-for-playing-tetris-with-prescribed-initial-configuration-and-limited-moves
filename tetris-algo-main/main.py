@@ -3,15 +3,12 @@ from TetrisGameGenerator import TetrisGameGenerator
 from time import time
 import multiprocessing
 import csv
-from minimization import minimize_max_attempts
 
 def solve_game(args):
     game, max_moves, test = args
     solver = TetrisSolver(game.board, game.sequence, game.goal, max_attempts=max_moves)
 
     result, moves, failed_attempts = solver.solve()
-
-
     if(test):
         return {
                 "solvable": result,
@@ -26,20 +23,23 @@ def generate_game(args):
     game = TetrisGameGenerator(seed=seed, goal=goal, tetrominoes=tetrominoes,initial_height_max= initial_height_max)
     return game
 
-
 if __name__ == "__main__":
     winnable_games = []
     attempts = []
     games = []
-    goal = 10
-    tetrominoes = 40
-    initial_height_max = 7
+
     num_processes = multiprocessing.cpu_count()
     print(f"Number of processes: {num_processes}")
-    test_games_to_generate = 0
-    games_to_generate = 10000
 
-    max_attempts = 10000
+    # MODIFIABLE PARAMETERS
+    goal = 8
+    tetrominoes = 40
+    initial_height_max = 4
+    start = 0
+    end = 100
+    max_attempts = 1000
+    # =====================
+
     start_loop = time()
 
     # start_minimization = time()
@@ -59,7 +59,7 @@ if __name__ == "__main__":
 
     start_game_generation = time()
     with multiprocessing.Pool(processes=num_processes) as pool:
-        games += pool.map(generate_game, [(i, goal, tetrominoes, initial_height_max) for i in range(0, games_to_generate)])
+        games += pool.map(generate_game, [(i, goal, tetrominoes, initial_height_max) for i in range(start, end)])
 
     end_game_generation = time()
     print(f"Time to generate games: {end_game_generation - start_game_generation}")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
 
     # Create a CSV file with the winnable games and their seed | max_moves | goal | initial_height_max
     if(len(winnable_games) > 0):
-        with open('winnable_games.csv', 'w', newline='') as file:
+        with open('winnable_games.csv', 'a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["seed", "max_moves", "goal", "initial_height_max"])
             for game in winnable_games:

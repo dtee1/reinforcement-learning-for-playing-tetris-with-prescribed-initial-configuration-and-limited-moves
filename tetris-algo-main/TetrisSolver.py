@@ -114,8 +114,7 @@ class TetrisSolver:
         shape = self.tetromino_shapes[current]
 
         for rotation in range(len(shape)):
-            columns_to_try = self.evaluate_columns(shape[rotation])
-            print(columns_to_try)
+            columns_to_try = self.evaluate_columns(shape[rotation])[:1]
 
             for col in columns_to_try:
                 if self.failed_attempts >= self.max_attempts:
@@ -183,10 +182,10 @@ if __name__ == '__main__' :
     height = 20
     width = 10
 
-    seed = 0
+    seed = 1
     goal = 10
-    tetrominoes = 50
-    initial_height_max = 7
+    tetrominoes = 40
+    initial_height_max = 14
 
     game = TetrisGameGenerator(seed=seed, goal=goal, tetrominoes=tetrominoes, initial_height_max=initial_height_max)
 
@@ -215,5 +214,3 @@ if __name__ == '__main__' :
     print('Lines cleared: ', solver.lines_cleared)
 
     solver.visualize_moves(stack)
-
-

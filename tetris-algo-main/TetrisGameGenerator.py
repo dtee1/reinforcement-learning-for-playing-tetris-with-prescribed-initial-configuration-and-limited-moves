@@ -21,8 +21,6 @@ class TetrisGameGenerator:
         self.board = np.zeros((self.height, self.width), dtype=int)
         self.tetrominoes_names = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
 
-        self.density = 9
-
         random.seed(self.seed)
         self.fill_grid()
         self.sequence = self.generate_tetromino_sequence(self.tetrominoes)
@@ -59,16 +57,6 @@ class TetrisGameGenerator:
 
         self.board = np.vstack([np.zeros((np.sum(full_rows), self.width), dtype=int), self.board[~full_rows]])
 
-    def evaluate_columns(self, tetromino):
-        columns_to_try = [col for col in range(self.width - len(tetromino[0]) + 1)]
-
-        best_column, best_placement_height = min(
-            ((col, self.calculate_placement_height(tetromino, col)) for col in columns_to_try),
-            key=lambda x: -x[1]
-        )
-
-        return best_column, best_placement_height
-
 
     def calculate_placement_height(self, tetromino, col):
         shape = np.array(tetromino)
@@ -88,8 +76,9 @@ class TetrisGameGenerator:
             # Randomly select a rotation
             rotation = random.randint(0, len(self.tetromino_shapes[tetromino]) - 1)
             shape = self.rotate_tetromino(self.tetromino_shapes[tetromino], rotation)
-            col_to_try, placement_height = self.evaluate_columns(shape)
+            col_to_try = random.randint(0, self.width - len(shape[0]))
             if self.is_valid_move(shape, 0, col_to_try):
+                placement_height = self.calculate_placement_height(shape, col_to_try)
                 if self.height + 1 - placement_height <= self.initial_height_max:
                     self.place_tetromino(shape, 0, col_to_try)
                 else:
@@ -131,10 +120,10 @@ def generate_board_and_sequence(seed, tetrominoes, initial_height_max, goal=0):
 
 
 def main():
-    for i in range(1000):
-        board, sequence = generate_board_and_sequence(i, 40, 7)
+    # for i in range(1000):
+    #     board, sequence = generate_board_and_sequence(i, 40, 7)
 
-    game = TetrisGameGenerator(seed=0, goal=15, tetrominoes=40, initial_height_max=7)
+    game = TetrisGameGenerator(seed=15, goal=15, tetrominoes=40, initial_height_max=7)
     game.print_grid()
     print(game.sequence)
 
