@@ -1,6 +1,7 @@
 import numpy as np
 from random import randint, getrandbits
 import time
+from tqdm import tqdm
 
 tetrominos = (
     (
@@ -42,10 +43,13 @@ def get_tetromino(piece: int, rotations: int) -> tuple[np.array, tuple[int, ...]
     return tetrominos[piece][rotations % len(tetrominos[piece])]
 
 class Tetris:
-    def __init__(self, L: int, M: int, random_pieces=False):
+    def __init__(self, L: int, M: int, random_pieces=False, max_revert=10, max_checkpoint=40):
         self.L = L
         self.M = M
+
         self.random_pieces = random_pieces
+        self.max_revert = max_revert
+        self.max_checkpoint = max_checkpoint
 
         while True:
             self.board = None
@@ -88,28 +92,27 @@ class Tetris:
                     checkpoints.append(np.copy(self.board))
                     pieces = list(range(7))
             else:
-                if revert_loop > 100:
+                if revert_loop > self.max_revert:
                     if len(checkpoints) > 1:
                         # Delete the last checkpoint
                         checkpoints.pop()
-                        # Load from the new last checkpoint
-                        self.board = np.copy(checkpoints[-1])
-                        self.pieces = self.pieces[-((len(checkpoints) - 1) * 7):]
-                        pieces = list(range(7))
+                    # Load from the new last checkpoint
+                    self.board = np.copy(checkpoints[-1])
+                    self.pieces = self.pieces[14-len(pieces):]
+                    pieces = list(range(7))
                     
                     checkpoint_loop = 0
                     revert_loop = 0
-                elif checkpoint_loop > 100:
+                elif checkpoint_loop > self.max_checkpoint:
                     # Load from the last checkpoint
                     self.board = np.copy(checkpoints[-1])
-                    self.pieces = self.pieces[-((len(checkpoints) - 1) * 7):]
+                    self.pieces = self.pieces[7-len(pieces):]
                     pieces = list(range(7))
 
                     checkpoint_loop = 0
                     revert_loop += 1
                 else:
                     checkpoint_loop += 1
-
         return True
 
     def carve(self, piece: int, rotations: int, location: int) -> bool:
@@ -222,9 +225,3 @@ class Tetris:
             
     def reset(self) -> None:
         self.__init__(self.L, self.M, random_pieces=self.random_pieces)
-
-start_time = time.time()
-iterations = 100
-for i in range(iterations):
-    game = Tetris(15, 40)
-print(iterations / (time.time() - start_time))
