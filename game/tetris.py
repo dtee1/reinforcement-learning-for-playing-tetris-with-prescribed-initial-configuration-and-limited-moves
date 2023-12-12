@@ -1,7 +1,9 @@
 import numpy as np
-from random import randint, getrandbits
+import random
 import time
 from tqdm import tqdm
+
+from typing import Callable
 
 tetrominos = (
     (
@@ -42,6 +44,44 @@ tetrominos = (
 def get_tetromino(piece: int, rotations: int) -> tuple[np.array, tuple[int, ...]]:
     return tetrominos[piece][rotations % len(tetrominos[piece])]
 
+class RandomPieceGenerator:
+    def __init__(self):
+        self.pieces = []
+
+    def _generate_pieces(self) -> None:
+        self.pieces = list(range(7))
+
+    def _regenerate(method: Callable) -> bool:
+        def wrapper(self, *args, **kwargs):
+            regenerated = False
+
+            if not self.pieces:
+                self._generate_pieces()
+                regenerated = True
+            
+            method_result = method(self, *args, **kwargs)
+
+            return method_result, regenerated
+        return wrapper
+
+    @_regenerate
+    def get_random_piece(self):
+        return self.pieces[random.randint(0, len(self.pieces) - 1)]
+        
+    @_regenerate
+    def _generate_sequence(self) -> None:
+        random.shuffle(self.pieces)
+
+    def get_random_sequence(self, length: int) -> list[int]:
+        sequence = []
+        while len(sequence) < length:
+            self._generate_sequence()
+            sequence.extend(self.pieces[:min(length - len(sequence), 7)])
+            self.pieces = []
+
+        return sequence
+    
+
 class Tetris:
     def __init__(self, L: int, M: int, random_pieces=False, max_revert=10, max_checkpoint=40):
         self.L = L
@@ -63,10 +103,13 @@ class Tetris:
         
     # Carving Approach
     def __get_initial_config(self) -> None:
-        # Initial full board generation
-        initial_empty = 20 - self.L # randint(0, 20 - self.L)
+        # Calculate the number of lines that need to be empty at the top
+        initial_empty = 20 - self.L # random.randint(0, 20 - self.L)
 
+        # Generate a completely full board
         self.board = np.full((20, 10), True, dtype=bool)
+
+        # Empty out the needed number of lines at the top
         self.board[:initial_empty, :] = False
 
         pieces = list(range(7))
@@ -77,11 +120,11 @@ class Tetris:
 
         while (len(self.pieces) < self.M) and np.all(self.board[-1]):
             # Choose a random piece from the pieces left
-            piece_index = randint(0, len(pieces) - 1)
+            piece_index = random.randint(0, len(pieces) - 1)
             piece = pieces[piece_index]
-            rotations = randint(0, 3)
+            rotations = random.randint(0, 3)
             tetromino_width = get_tetromino(piece, rotations)[0].shape[1]
-            location = randint(0, 10-tetromino_width)
+            location = random.randint(0, 10-tetromino_width)
 
             if self.carve(piece, rotations, location):
                 checkpoint_loop = 0
@@ -113,6 +156,12 @@ class Tetris:
                     revert_loop += 1
                 else:
                     checkpoint_loop += 1
+        
+        # If less pieces were used than the allows maximum then pad out the pieces randomly
+        if (len(self.pieces) > self.M):
+            while (len(self.pieces) > self.M):
+                pass
+
         return True
 
     def carve(self, piece: int, rotations: int, location: int) -> bool:
@@ -157,7 +206,7 @@ class Tetris:
     def move(self, rotations: int, location: int) -> None:
         piece = self.pieces.pop(0)
         if self.random_pieces:
-            self.pieces.append(bool(getrandbits(1)))
+            self.pieces.append(bool(random.getrandbits(1)))
 
         tetromino, reverse_tetromino_topography = get_tetromino(piece, rotations)
 
