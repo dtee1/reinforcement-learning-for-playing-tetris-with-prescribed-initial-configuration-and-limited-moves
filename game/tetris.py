@@ -309,7 +309,3 @@ class Tetris:
             
     def reset(self) -> None:
         self.__init__(self.L, self.M, random_pieces=self.random_pieces)
-
-game = Tetris(1, 2)
-print(game.board)
-print(game.pieces)
