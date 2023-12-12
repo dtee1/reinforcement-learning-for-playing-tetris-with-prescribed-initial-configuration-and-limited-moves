@@ -100,11 +100,8 @@ class CheckpointManager:
         self.max_checkpoint_uses = 10
 
     def add_attempt(self) -> bool:
-        if len(self.checkpoints) > 1:
-            self.attempts += 1
-            return self.attempts > self.max_attempts
-        
-        return False
+        self.attempts += 1
+        return self.attempts > self.max_attempts
     
     def add_checkpoint(self, checkpoint: any) -> None:
         self.checkpoints.append(checkpoint)
@@ -112,7 +109,7 @@ class CheckpointManager:
     def load_checkpoint(self) -> any:
         self.attempts = 0
 
-        if self.checkpoint_uses > self.max_checkpoint_uses:
+        if len(self.checkpoints) > 1 and self.checkpoint_uses > self.max_checkpoint_uses:
             del self.checkpoints[-1]
             reverted = True
             self.checkpoint_uses = 0
@@ -160,34 +157,36 @@ class Tetris:
         # Create the checkpoint manager instance
         checkpoint_manager = CheckpointManager(np.copy(self.board))
 
-        while (len(self.pieces) < self.M) and np.all(self.board[-1]):
+        while (len(self.pieces) < self.M) and np.count_nonzero(self.board[-1]) >= len(self.board[-1]) / 2:
             # Get a random piece from the generator
             random_piece, regenerated = self.random_piece_generator.get_random_piece()
+
+            if regenerated:
+                checkpoint_manager.add_checkpoint(np.copy(self.board))
 
             rotations = random.randint(0, 3)
             tetromino_width = get_tetromino(random_piece, rotations)[0].shape[1]
             location = random.randint(0, 10-tetromino_width)
-
-            if self.carve(random_piece, rotations, location):
+                        
+            if self.carve(random_piece, rotations, location, len(self.random_piece_generator) == 7):
                 self.pieces.insert(0, random_piece)
                 self.random_piece_generator.delete_last_generated_random_piece()
-                checkpoint_manager.add_checkpoint(np.copy(self.board))
-                
             else:
                 if checkpoint_manager.add_attempt():
                     checkpoint, reverted = checkpoint_manager.load_checkpoint()
                     self.board = np.copy(checkpoint)
                     self.pieces = self.pieces[(14 if reverted else 7) - len(self.random_piece_generator):]
+                    
+                    
                     self.random_piece_generator.generate_pieces()
         
         # If less pieces were used than the allows maximum then pad out the pieces randomly
-        if (len(self.pieces) > self.M):
-            while (len(self.pieces) > self.M):
-                pass
+        if (len(self.pieces) < self.M):
+            self.pieces.extend(self.random_piece_generator.get_random_sequence(self.M - len(self.pieces)))
 
         return True
 
-    def carve(self, piece: int, rotations: int, location: int) -> bool:
+    def carve(self, piece: int, rotations: int, location: int, allow_partial: bool) -> bool:
         tetromino, reverse_tetromino_topography = get_tetromino(piece, rotations)
         tetromino_height, tetromino_width = tetromino.shape
 
@@ -198,30 +197,43 @@ class Tetris:
 
         drop += push
 
+        increments = tetromino_height if allow_partial else 1
+        for increment in range(increments):
+            print(drop)
+            if self.calculate_carve(drop, location, tetromino, reverse_tetromino_topography, allow_partial):
+                return True
+            drop -= 1
+        return False
+
+    def calculate_carve(self, drop: int, location: int, tetromino: np.array, reverse_tetromino_topography: tuple[int, ...], allow_partial: bool):
+        tetromino_height, tetromino_width = tetromino.shape
+
         # If the drop goes out of bounds then the carve failed
         if drop + tetromino_height > 20:
             return False
 
         # Calculate overlap
-        board_slice = self.board[drop:drop + tetromino_height, location:location + tetromino_width]
-        overlap = np.all(np.logical_not(tetromino) | board_slice)
+        if not allow_partial:            
+            board_slice = self.board[drop:drop + tetromino_height, location:location + tetromino_width]
+            overlap = np.all(np.logical_not(tetromino) | board_slice)
 
-        # If no overlap then carving failed
-        if not overlap:
-            return False
+            # If no overlap then carving failed
+            if not overlap:
+                return False
         
         # Apply the carve
-        self.board[drop:drop + tetromino_height, location:location + tetromino_width] ^= tetromino
+        self.board[drop:drop + tetromino_height, location:location + tetromino_width] &= np.logical_not(tetromino)
         
-        # Make a new drop to ensure it falls where the carve was
-        # Ensures that there were no blocking blocks above and that there were supporting blocks below
-        new_drop_deltas = self.calculate_drop_deltas(location, reverse_tetromino_topography, tetromino_width)
-        new_drop = self.calculate_drop(new_drop_deltas)
-        
-        # If the new drop does not land where the carve was done then revert the carve and carving failed
-        if new_drop != drop:
-            self.board[drop:drop + tetromino_height, location:location + tetromino_width] |= tetromino
-            return False
+        if not allow_partial:
+            # Make a new drop to ensure it falls where the carve was
+            # Ensures that there were no blocking blocks above and that there were supporting blocks below
+            new_drop_deltas = self.calculate_drop_deltas(location, reverse_tetromino_topography, tetromino_width)
+            new_drop = self.calculate_drop(new_drop_deltas)
+            
+            # If the new drop does not land where the carve was done then revert the carve and carving failed
+            if new_drop != drop:
+                self.board[drop:drop + tetromino_height, location:location + tetromino_width] |= tetromino
+                return False
 
         # Carving succeeded
         return True
@@ -297,3 +309,7 @@ class Tetris:
             
     def reset(self) -> None:
         self.__init__(self.L, self.M, random_pieces=self.random_pieces)
+
+game = Tetris(1, 2)
+print(game.board)
+print(game.pieces)
