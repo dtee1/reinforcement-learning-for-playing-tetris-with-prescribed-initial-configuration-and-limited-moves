@@ -199,7 +199,6 @@ class Tetris:
 
         increments = tetromino_height if allow_partial else 1
         for increment in range(increments):
-            print(drop)
             if self.calculate_carve(drop, location, tetromino, reverse_tetromino_topography, allow_partial):
                 return True
             drop -= 1
@@ -221,19 +220,20 @@ class Tetris:
             if not overlap:
                 return False
         
+        board_checkpoint = np.copy(self.board[drop:drop + tetromino_height, location:location + tetromino_width])
+
         # Apply the carve
         self.board[drop:drop + tetromino_height, location:location + tetromino_width] &= np.logical_not(tetromino)
+
+        # Make a new drop to ensure it falls where the carve was
+        # Ensures that there were no blocking blocks above and that there were supporting blocks below
+        new_drop_deltas = self.calculate_drop_deltas(location, reverse_tetromino_topography, tetromino_width)
+        new_drop = self.calculate_drop(new_drop_deltas)
         
-        if not allow_partial:
-            # Make a new drop to ensure it falls where the carve was
-            # Ensures that there were no blocking blocks above and that there were supporting blocks below
-            new_drop_deltas = self.calculate_drop_deltas(location, reverse_tetromino_topography, tetromino_width)
-            new_drop = self.calculate_drop(new_drop_deltas)
-            
-            # If the new drop does not land where the carve was done then revert the carve and carving failed
-            if new_drop != drop:
-                self.board[drop:drop + tetromino_height, location:location + tetromino_width] |= tetromino
-                return False
+        # If the new drop does not land where the carve was done then revert the carve and carving failed
+        if new_drop != drop:
+            self.board[drop:drop + tetromino_height, location:location + tetromino_width] = board_checkpoint
+            return False
 
         # Carving succeeded
         return True
