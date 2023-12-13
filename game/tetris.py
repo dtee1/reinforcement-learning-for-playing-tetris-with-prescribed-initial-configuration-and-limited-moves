@@ -1,48 +1,48 @@
 import numpy as np
 import random
-import time
-from tqdm import tqdm
-
+import multiprocessing
 from typing import Callable
 
 tetrominos = (
     (
-        (np.array(((True,True,True,True),), dtype=bool), (0,0,0,0)),
-        (np.array(((True,),(True,),(True,),(True,)), dtype=bool), (3,))
+        (np.array(((True, True, True, True),), dtype=bool), (0, 0, 0, 0)),
+        (np.array(((True,), (True,), (True,), (True,)), dtype=bool), (3,))
     ),
     (
-        (np.array(((False,False,True),(True,True,True)), dtype=bool), (1,1,1)),
-        (np.array(((True,True),(False,True),(False,True)), dtype=bool), (0,2)),
-        (np.array(((True,True,True),(True,False,False)), dtype=bool), (1,0,0)),
-        (np.array(((True,False),(True,False),(True,True)), dtype=bool), (2,2))
+        (np.array(((False, False, True), (True, True, True)), dtype=bool), (1, 1, 1)),
+        (np.array(((True, True), (False, True), (False, True)), dtype=bool), (0, 2)),
+        (np.array(((True, True, True), (True, False, False)), dtype=bool), (1, 0, 0)),
+        (np.array(((True, False), (True, False), (True, True)), dtype=bool), (2, 2))
     ),
     (
-        (np.array(((True,False,False),(True,True,True)), dtype=bool), (1,1,1)),
-        (np.array(((False,True),(False,True),(True,True)), dtype=bool), (2,2)),
-        (np.array(((True,True,True),(False,False,True)), dtype=bool), (0,0,1)),
-        (np.array(((True,True),(True,False),(True,False)), dtype=bool), (2,0))
+        (np.array(((True, False, False), (True, True, True)), dtype=bool), (1, 1, 1)),
+        (np.array(((False, True), (False, True), (True, True)), dtype=bool), (2, 2)),
+        (np.array(((True, True, True), (False, False, True)), dtype=bool), (0, 0, 1)),
+        (np.array(((True, True), (True, False), (True, False)), dtype=bool), (2, 0))
     ),
     (
-        (np.array(((False,True,False),(True,True,True)), dtype=bool), (1,1,1)),
-        (np.array(((False,True),(True,True),(False,True)), dtype=bool), (1,2)),
-        (np.array(((True,True,True),(False,True,False)), dtype=bool), (0,1,0)),
-        (np.array(((True,False),(True,True),(True,False)), dtype=bool), (2,1))
+        (np.array(((False, True, False), (True, True, True)), dtype=bool), (1, 1, 1)),
+        (np.array(((False, True), (True, True), (False, True)), dtype=bool), (1, 2)),
+        (np.array(((True, True, True), (False, True, False)), dtype=bool), (0, 1, 0)),
+        (np.array(((True, False), (True, True), (True, False)), dtype=bool), (2, 1))
     ),
     (
-        (np.array(((False,True,True),(True,True,False)), dtype=bool), (1,1,0)),
-        (np.array(((True,False),(True,True),(False,True)), dtype=bool), (1,2))
+        (np.array(((False, True, True), (True, True, False)), dtype=bool), (1, 1, 0)),
+        (np.array(((True, False), (True, True), (False, True)), dtype=bool), (1, 2))
     ),
     (
-        (np.array(((True,True,False),(False,True,True)), dtype=bool), (0,1,1)),
-        (np.array(((False,True),(True,True),(True,False)), dtype=bool), (2,1))
+        (np.array(((True, True, False), (False, True, True)), dtype=bool), (0, 1, 1)),
+        (np.array(((False, True), (True, True), (True, False)), dtype=bool), (2, 1))
     ),
     (
-        (np.array(((True,True),(True,True)), dtype=bool), (1,1)),
+        (np.array(((True, True), (True, True)), dtype=bool), (1, 1)),
     )
 )
 
+
 def get_tetromino(piece: int, rotations: int) -> tuple[np.array, tuple[int, ...]]:
     return tetrominos[piece][rotations % len(tetrominos[piece])]
+
 
 class RandomPieceGenerator:
     def __init__(self) -> None:
@@ -59,7 +59,7 @@ class RandomPieceGenerator:
             if not self.pieces:
                 self.generate_pieces()
                 regenerated = True
-            
+
             method_result = method(self, *args, **kwargs)
 
             return method_result, regenerated
@@ -67,12 +67,13 @@ class RandomPieceGenerator:
 
     @_regenerate
     def get_random_piece(self):
-        self.last_generated_random_piece_index = random.randint(0, len(self.pieces) - 1)
+        self.last_generated_random_piece_index = random.randint(
+            0, len(self.pieces) - 1)
         return self.pieces[self.last_generated_random_piece_index]
 
     def delete_last_generated_random_piece(self):
         del self.pieces[self.last_generated_random_piece_index]
-        
+
     @_regenerate
     def _generate_sequence(self) -> None:
         random.shuffle(self.pieces)
@@ -85,10 +86,11 @@ class RandomPieceGenerator:
             self.pieces = []
 
         return sequence
-    
+
     def __len__(self) -> int:
         return len(self.pieces)
-    
+
+
 class CheckpointManager:
     def __init__(self, initial_checkpoint: any) -> None:
         self.checkpoints = [initial_checkpoint]
@@ -102,10 +104,10 @@ class CheckpointManager:
     def add_attempt(self) -> bool:
         self.attempts += 1
         return self.attempts > self.max_attempts
-    
+
     def add_checkpoint(self, checkpoint: any) -> None:
         self.checkpoints.append(checkpoint)
-    
+
     def load_checkpoint(self) -> any:
         self.attempts = 0
 
@@ -119,34 +121,40 @@ class CheckpointManager:
 
         return self.checkpoints[-1], reverted
 
+
 class Tetris:
-    def __init__(self, L: int, M: int, random_pieces=False, max_revert=10, max_checkpoint=40):
-        # Create the random piece generator instance
-        self.random_piece_generator = RandomPieceGenerator()
+    def __init__(self, L: int, M: int, warm_reset: bool = True):
+        # Hyperparameters
+        self.L: int = L
+        self.M: int = M
+        self.warm_reset = warm_reset
 
-        self.L = L
-        self.M = M
-
-        self.random_pieces = random_pieces
-        self.max_revert = max_revert
-        self.max_checkpoint = max_checkpoint
-
-        self.warm_reset = True
-
-        while True:
-            self.board = None
-            self.pieces = []
-
-            if self.__get_initial_config():
-                break
+        # State variables
         self.lines_cleared = 0
         self.moves_used = 0
         self.state = None
-        
+
+        # Components
+        self.random_piece_generator: RandomPieceGenerator = RandomPieceGenerator()
+        self.board: np.array = np.full((20, 10), False, dtype=bool)
+        self.pieces: list[int] = []
+
+        # Warm reset components
+        if self.warm_reset:
+            self.conn, warm_reset_conn = multiprocessing.Pipe()
+            warm_reset_tetris = Tetris(self.L, self.M, warm_reset=False)
+            self.warm_reset_process = multiprocessing.Process(
+                target=warm_reset_worker, args=(warm_reset_conn, warm_reset_tetris))
+            self.warm_reset_process.start()
+            self.conn.send('PING')
+
+        self.load_warm_reset()
+
     # Carving Approach
-    def __get_initial_config(self) -> None:
+
+    def _generate_initial_config(self) -> None:
         # Calculate the number of lines that need to be empty at the top
-        initial_empty = 20 - self.L # random.randint(0, 20 - self.L)
+        initial_empty = 20 - self.L  # random.randint(0, 20 - self.L)
 
         # Generate a completely full board
         self.board = np.full((20, 10), True, dtype=bool)
@@ -165,9 +173,10 @@ class Tetris:
                 checkpoint_manager.add_checkpoint(np.copy(self.board))
 
             rotations = random.randint(0, 3)
-            tetromino_width = get_tetromino(random_piece, rotations)[0].shape[1]
+            tetromino_width = get_tetromino(
+                random_piece, rotations)[0].shape[1]
             location = random.randint(0, 10-tetromino_width)
-                        
+
             if self.carve(random_piece, rotations, location, len(self.random_piece_generator) == 7):
                 self.pieces.insert(0, random_piece)
                 self.random_piece_generator.delete_last_generated_random_piece()
@@ -175,23 +184,24 @@ class Tetris:
                 if checkpoint_manager.add_attempt():
                     checkpoint, reverted = checkpoint_manager.load_checkpoint()
                     self.board = np.copy(checkpoint)
-                    self.pieces = self.pieces[(14 if reverted else 7) - len(self.random_piece_generator):]
-                    
-                    
+                    self.pieces = self.pieces[(
+                        14 if reverted else 7) - len(self.random_piece_generator):]
+
                     self.random_piece_generator.generate_pieces()
-        
+
         # If less pieces were used than the allows maximum then pad out the pieces randomly
         if (len(self.pieces) < self.M):
-            self.pieces.extend(self.random_piece_generator.get_random_sequence(self.M - len(self.pieces)))
-
-        return True
+            self.pieces.extend(self.random_piece_generator.get_random_sequence(
+                self.M - len(self.pieces)))
 
     def carve(self, piece: int, rotations: int, location: int, allow_partial: bool) -> bool:
-        tetromino, reverse_tetromino_topography = get_tetromino(piece, rotations)
+        tetromino, reverse_tetromino_topography = get_tetromino(
+            piece, rotations)
         tetromino_height, tetromino_width = tetromino.shape
 
         # Calculate drop location
-        drop_deltas = self.calculate_drop_deltas(location, reverse_tetromino_topography, tetromino_width)
+        drop_deltas = self.calculate_drop_deltas(
+            location, reverse_tetromino_topography, tetromino_width)
         drop = self.calculate_drop(drop_deltas)
         push = reverse_tetromino_topography[np.argmin(drop_deltas)] + 1
 
@@ -212,27 +222,32 @@ class Tetris:
             return False
 
         # Calculate overlap
-        if not allow_partial:            
-            board_slice = self.board[drop:drop + tetromino_height, location:location + tetromino_width]
+        if not allow_partial:
+            board_slice = self.board[drop:drop + tetromino_height,
+                                     location:location + tetromino_width]
             overlap = np.all(np.logical_not(tetromino) | board_slice)
 
             # If no overlap then carving failed
             if not overlap:
                 return False
-        
-        board_checkpoint = np.copy(self.board[drop:drop + tetromino_height, location:location + tetromino_width])
+
+        board_checkpoint = np.copy(
+            self.board[drop:drop + tetromino_height, location:location + tetromino_width])
 
         # Apply the carve
-        self.board[drop:drop + tetromino_height, location:location + tetromino_width] &= np.logical_not(tetromino)
+        self.board[drop:drop + tetromino_height, location:location +
+                   tetromino_width] &= np.logical_not(tetromino)
 
         # Make a new drop to ensure it falls where the carve was
         # Ensures that there were no blocking blocks above and that there were supporting blocks below
-        new_drop_deltas = self.calculate_drop_deltas(location, reverse_tetromino_topography, tetromino_width)
+        new_drop_deltas = self.calculate_drop_deltas(
+            location, reverse_tetromino_topography, tetromino_width)
         new_drop = self.calculate_drop(new_drop_deltas)
-        
+
         # If the new drop does not land where the carve was done then revert the carve and carving failed
         if new_drop != drop:
-            self.board[drop:drop + tetromino_height, location:location + tetromino_width] = board_checkpoint
+            self.board[drop:drop + tetromino_height,
+                       location:location + tetromino_width] = board_checkpoint
             return False
 
         # Carving succeeded
@@ -240,16 +255,16 @@ class Tetris:
 
     def move(self, rotations: int, location: int) -> None:
         piece = self.pieces.pop(0)
-        if self.random_pieces:
-            self.pieces.append(bool(random.getrandbits(1)))
 
-        tetromino, reverse_tetromino_topography = get_tetromino(piece, rotations)
+        tetromino, reverse_tetromino_topography = get_tetromino(
+            piece, rotations)
 
         # Ensure the location is not out of bounds horizontally
         tetromino_width = tetromino.shape[1]
         location = min(location, 10-tetromino_width)
-        
-        drop_deltas = self.calculate_drop_deltas(location, reverse_tetromino_topography, tetromino_width)
+
+        drop_deltas = self.calculate_drop_deltas(
+            location, reverse_tetromino_topography, tetromino_width)
         drop = self.calculate_drop(drop_deltas)
 
         # Check if out of bounds
@@ -258,21 +273,23 @@ class Tetris:
             return
 
         # Insert Block
-        self.board[drop:drop + tetromino.shape[0], location:location + tetromino_width] = tetromino
+        self.board[drop:drop + tetromino.shape[0],
+                   location:location + tetromino_width] = tetromino
 
         self.moves_used += 1
 
         # Clear lines
-        rows_all_trues = np.all(self.board[drop:drop + tetromino.shape[0], :], axis=1)
+        rows_all_trues = np.all(
+            self.board[drop:drop + tetromino.shape[0], :], axis=1)
 
         rows_cleared = np.count_nonzero(rows_all_trues)
-        
+
         # If no lines cleared
         if rows_cleared == 0:
             if self.moves_used >= self.M:
                 self.state = False
             return
-        
+
         indices_to_clear = []
 
         for row_index, row in enumerate(rows_all_trues):
@@ -291,11 +308,11 @@ class Tetris:
             self.state = True
 
         if self.moves_used >= self.M:
-                self.state = False
-    
+            self.state = False
+
     def calculate_drop(self, drop_deltas) -> int:
         return min(drop_deltas) - 1
-    
+
     def calculate_drop_deltas(self, location, reverse_tetromino_topography, tetromino_width):
         board_topography = []
         for col in self.board.T[location:location+tetromino_width, :]:
@@ -306,6 +323,27 @@ class Tetris:
 
     def get_state(self) -> tuple[np.array, int, int, int, int, bool]:
         return self.board, self.pieces[0], self.pieces[1], self.L - self.lines_cleared, self.M - self.moves_used, self.state
-            
+
+    def await_for_warm_initial_config(self):
+        pass
+
     def reset(self) -> None:
-        self.__init__(self.L, self.M, random_pieces=self.random_pieces)
+        self.random_piece_generator.generate_pieces()
+        self.board[:, :] = False
+        self.pieces.clear()
+
+        self.load_warm_reset()
+
+    def load_warm_reset(self) -> None:
+        if self.warm_reset:
+            self.board, self.pieces = self.conn.recv()
+            self.conn.send('PING')
+        else:
+            self._generate_initial_config()
+
+
+def warm_reset_worker(conn: multiprocessing.Pipe, warm_reset_tetris):
+    while True:
+        conn.recv()
+        warm_reset_tetris.reset()
+        conn.send((np.copy(warm_reset_tetris.board), warm_reset_tetris.pieces.copy()))
