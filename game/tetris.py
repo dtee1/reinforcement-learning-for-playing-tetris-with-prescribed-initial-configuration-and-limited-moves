@@ -1,8 +1,26 @@
+import importlib
 import numpy as np
 import random
 import multiprocessing
 from typing import Callable
 import time
+
+from tetris_algo_main import main
+
+piece_translations = {
+    'I': 0,
+    'L': 1,
+    'J': 2,
+    'T': 3,
+    'S': 4,
+    'Z': 5,
+    'O': 6
+}
+
+
+def translate(batch: list):
+    return [(game.board.astype(bool), [piece_translations[letter] for letter in game.sequence]) for game in batch]
+
 
 tetrominos = (
     (
@@ -146,12 +164,17 @@ class Tetris:
 
         # Warm reset components
         if self.warm_reset:
-            self.conn, warm_reset_conn = multiprocessing.Pipe()
+            self.terminate_event = multiprocessing.Event()
+            self.queue = multiprocessing.Queue(maxsize=20)
             warm_reset_tetris = Tetris(self.L, self.M, warm_reset=False)
+
             self.warm_reset_process = multiprocessing.Process(
-                target=warm_reset_worker, args=(warm_reset_conn, warm_reset_tetris))
+                target=warm_reset_worker, args=(self.queue, warm_reset_tetris, self.terminate_event))
+
+            self.forward_warm_reset_process = multiprocessing.Process(
+                target=forward_warm_reset_worker, args=(self.queue, self.terminate_event, self.L, self.M))
             self.warm_reset_process.start()
-            self.conn.send('continue')
+            self.forward_warm_reset_process.start()
 
         self.load_warm_reset()
 
@@ -348,23 +371,31 @@ class Tetris:
 
     def load_warm_reset(self) -> None:
         if self.warm_reset:
-            self.board, self.pieces = self.conn.recv()
-            self.conn.send('continue')
+            self.board, self.pieces = self.queue.get()
         else:
             self._generate_initial_config()
 
     def terminate(self):
-        self.conn.send('terminate')
+        self.terminate_event.set()
+        self.queue.close()
         self.warm_reset_process.join()
+        self.forward_warm_reset_process.join()
 
 
-def warm_reset_worker(conn: multiprocessing.Pipe, warm_reset_tetris):
-    while True:
-        message = conn.recv()
-
-        if message == 'terminate':
-            break
-
+def warm_reset_worker(queue: multiprocessing.Queue, warm_reset_tetris, terminate_event: multiprocessing.Event):
+    while not terminate_event.is_set():
         warm_reset_tetris.reset()
-        conn.send((np.copy(warm_reset_tetris.board),
-                  warm_reset_tetris.pieces.copy()))
+        reset_point = (np.copy(warm_reset_tetris.board),
+                       warm_reset_tetris.pieces.copy())
+
+        queue.put(reset_point)
+
+
+def forward_warm_reset_worker(queue: multiprocessing.Queue, terminate_event: multiprocessing.Event, L, M):
+    while not terminate_event.is_set():
+        batch = translate(main.generate_batch(L, M, debug=False))
+        for reset_point in batch:
+            if terminate_event.is_set():
+                break
+            queue.put(reset_point)
+            
