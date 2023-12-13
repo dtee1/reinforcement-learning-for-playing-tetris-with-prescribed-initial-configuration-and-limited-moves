@@ -19,7 +19,7 @@ piece_translations = {
 
 
 def translate(batch: list):
-    return [(game.board.astype(bool), [piece_translations[letter] for letter in game.sequence]) for game in batch]
+    return [(game.board.astype(bool), [random.randint(0, 6)] + [piece_translations[letter] for letter in game.sequence][::-1]) for game in batch]
 
 
 tetrominos = (
@@ -398,4 +398,3 @@ def forward_warm_reset_worker(queue: multiprocessing.Queue, terminate_event: mul
             if terminate_event.is_set():
                 break
             queue.put(reset_point)
-            
