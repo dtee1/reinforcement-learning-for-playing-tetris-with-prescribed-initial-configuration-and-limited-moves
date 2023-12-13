@@ -2,6 +2,24 @@ import numpy as np
 import random
 import multiprocessing
 from typing import Callable
+import time
+
+timing = False
+timing_map = {}
+
+def timings(func):
+    def wrapper(*args, **kwargs):
+        if timing:
+            timer = time.time()
+        result = func(*args, **kwargs)
+        if timing:
+            timer = time.time() - timer
+            if not timing_map.get(func.__name__):
+                timing_map[func.__name__] = timer
+            else:
+                timing_map[func.__name__] += timer
+        return result
+    return wrapper
 
 tetrominos = (
     (
@@ -123,6 +141,7 @@ class CheckpointManager:
 
 
 class Tetris:
+    @timings
     def __init__(self, L: int, M: int, warm_reset: bool = True):
         # Hyperparameters
         self.L: int = L
@@ -146,12 +165,12 @@ class Tetris:
             self.warm_reset_process = multiprocessing.Process(
                 target=warm_reset_worker, args=(warm_reset_conn, warm_reset_tetris))
             self.warm_reset_process.start()
-            self.conn.send('PING')
+            self.conn.send('continue')
 
         self.load_warm_reset()
 
     # Carving Approach
-
+    @timings
     def _generate_initial_config(self) -> None:
         # Calculate the number of lines that need to be empty at the top
         initial_empty = 20 - self.L  # random.randint(0, 20 - self.L)
@@ -165,7 +184,7 @@ class Tetris:
         # Create the checkpoint manager instance
         checkpoint_manager = CheckpointManager(np.copy(self.board))
 
-        while (len(self.pieces) < self.M) and np.count_nonzero(self.board[-1]) >= len(self.board[-1]) / 2:
+        while (len(self.pieces) < self.M) and np.count_nonzero(self.board[-1]) > 8:
             # Get a random piece from the generator
             random_piece, regenerated = self.random_piece_generator.get_random_piece()
 
@@ -193,7 +212,7 @@ class Tetris:
         if (len(self.pieces) < self.M):
             self.pieces.extend(self.random_piece_generator.get_random_sequence(
                 self.M - len(self.pieces)))
-
+    @timings
     def carve(self, piece: int, rotations: int, location: int, allow_partial: bool) -> bool:
         tetromino, reverse_tetromino_topography = get_tetromino(
             piece, rotations)
@@ -213,7 +232,7 @@ class Tetris:
                 return True
             drop -= 1
         return False
-
+    @timings
     def calculate_carve(self, drop: int, location: int, tetromino: np.array, reverse_tetromino_topography: tuple[int, ...], allow_partial: bool):
         tetromino_height, tetromino_width = tetromino.shape
 
@@ -252,7 +271,7 @@ class Tetris:
 
         # Carving succeeded
         return True
-
+    @timings
     def move(self, rotations: int, location: int) -> None:
         piece = self.pieces.pop(0)
 
@@ -309,10 +328,10 @@ class Tetris:
 
         if self.moves_used >= self.M:
             self.state = False
-
+    @timings
     def calculate_drop(self, drop_deltas) -> int:
         return min(drop_deltas) - 1
-
+    @timings
     def calculate_drop_deltas(self, location, reverse_tetromino_topography, tetromino_width):
         board_topography = []
         for col in self.board.T[location:location+tetromino_width, :]:
@@ -320,30 +339,38 @@ class Tetris:
             board_topography.append(result[0] if len(result) != 0 else 20)
 
         return np.array(board_topography) - np.array(reverse_tetromino_topography)
-
+    @timings
     def get_state(self) -> tuple[np.array, int, int, int, int, bool]:
         return self.board, self.pieces[0], self.pieces[1], self.L - self.lines_cleared, self.M - self.moves_used, self.state
-
+    @timings
     def await_for_warm_initial_config(self):
         pass
-
+    @timings
     def reset(self) -> None:
         self.random_piece_generator.generate_pieces()
         self.board[:, :] = False
         self.pieces.clear()
 
         self.load_warm_reset()
-
+    @timings
     def load_warm_reset(self) -> None:
         if self.warm_reset:
             self.board, self.pieces = self.conn.recv()
-            self.conn.send('PING')
+            self.conn.send('continue')
         else:
             self._generate_initial_config()
+    @timings
+    def terminate(self):
+        self.conn.send('terminate')
+        self.warm_reset_process.join()
 
 
 def warm_reset_worker(conn: multiprocessing.Pipe, warm_reset_tetris):
     while True:
-        conn.recv()
+        message = conn.recv()
+
+        if message == 'terminate':
+            break
+
         warm_reset_tetris.reset()
         conn.send((np.copy(warm_reset_tetris.board), warm_reset_tetris.pieces.copy()))
