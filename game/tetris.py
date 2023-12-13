@@ -7,6 +7,7 @@ import time
 timing = False
 timing_map = {}
 
+
 def timings(func):
     def wrapper(*args, **kwargs):
         if timing:
@@ -20,6 +21,7 @@ def timings(func):
                 timing_map[func.__name__] += timer
         return result
     return wrapper
+
 
 tetrominos = (
     (
@@ -105,13 +107,17 @@ class RandomPieceGenerator:
 
         return sequence
 
+    def reset(self) -> None:
+        self.pieces.clear()
+        self.last_generated_random_piece_index = None
+
     def __len__(self) -> int:
         return len(self.pieces)
 
 
 class CheckpointManager:
-    def __init__(self, initial_checkpoint: any) -> None:
-        self.checkpoints = [initial_checkpoint]
+    def __init__(self) -> None:
+        self.checkpoints = []
 
         self.attempts = 0
         self.max_attempts = 40
@@ -172,33 +178,33 @@ class Tetris:
     # Carving Approach
     @timings
     def _generate_initial_config(self) -> None:
-        # Calculate the number of lines that need to be empty at the top
-        initial_empty = 20 - self.L  # random.randint(0, 20 - self.L)
-
-        # Generate a completely full board
-        self.board = np.full((20, 10), True, dtype=bool)
-
-        # Empty out the needed number of lines at the top
-        self.board[:initial_empty, :] = False
+        # Add the number of lines to clear as full lines onto the board
+        self.board[-self.L:, :] = True
 
         # Create the checkpoint manager instance
-        checkpoint_manager = CheckpointManager(np.copy(self.board))
+        checkpoint_manager = CheckpointManager()
 
+        # While a piece sequence hasn't been found and the last line hasn't been broken
         while (len(self.pieces) < self.M) and np.count_nonzero(self.board[-1]) > 8:
             # Get a random piece from the generator
             random_piece, regenerated = self.random_piece_generator.get_random_piece()
 
+            # If the generator regenerated then add a checkpoint
             if regenerated:
                 checkpoint_manager.add_checkpoint(np.copy(self.board))
 
+            # Get some extra information
             rotations = random.randint(0, 3)
             tetromino_width = get_tetromino(
                 random_piece, rotations)[0].shape[1]
             location = random.randint(0, 10-tetromino_width)
 
+            # Attempt a carve
+            # If it is successful then add the piece to the sequence
             if self.carve(random_piece, rotations, location, len(self.random_piece_generator) == 7):
                 self.pieces.insert(0, random_piece)
                 self.random_piece_generator.delete_last_generated_random_piece()
+            # Else add a checkpoint attempt and load checkpoint if limits have been reached
             else:
                 if checkpoint_manager.add_attempt():
                     checkpoint, reverted = checkpoint_manager.load_checkpoint()
@@ -212,8 +218,10 @@ class Tetris:
         if (len(self.pieces) < self.M):
             self.pieces.extend(self.random_piece_generator.get_random_sequence(
                 self.M - len(self.pieces)))
+
     @timings
     def carve(self, piece: int, rotations: int, location: int, allow_partial: bool) -> bool:
+        # Unpack information
         tetromino, reverse_tetromino_topography = get_tetromino(
             piece, rotations)
         tetromino_height, tetromino_width = tetromino.shape
@@ -222,16 +230,23 @@ class Tetris:
         drop_deltas = self.calculate_drop_deltas(
             location, reverse_tetromino_topography, tetromino_width)
         drop = self.calculate_drop(drop_deltas)
+
+        # Calculate the push needed to fully immerse the piece in the board
         push = reverse_tetromino_topography[np.argmin(drop_deltas)] + 1
 
+        # Add the push to the drop
         drop += push
 
+        # If partial carve is allowed then try every possible different push, else just try the maximum push
         increments = tetromino_height if allow_partial else 1
         for increment in range(increments):
             if self.calculate_carve(drop, location, tetromino, reverse_tetromino_topography, allow_partial):
                 return True
             drop -= 1
+
+        # If no carving was possible then carving failed
         return False
+
     @timings
     def calculate_carve(self, drop: int, location: int, tetromino: np.array, reverse_tetromino_topography: tuple[int, ...], allow_partial: bool):
         tetromino_height, tetromino_width = tetromino.shape
@@ -240,8 +255,9 @@ class Tetris:
         if drop + tetromino_height > 20:
             return False
 
-        # Calculate overlap
+        # If partial carving is disallowed then check for overlap
         if not allow_partial:
+            # Calculate overlap
             board_slice = self.board[drop:drop + tetromino_height,
                                      location:location + tetromino_width]
             overlap = np.all(np.logical_not(tetromino) | board_slice)
@@ -250,6 +266,7 @@ class Tetris:
             if not overlap:
                 return False
 
+        # The carving operation as defined is not reversible, so we save the current slice to be able to invert if needed
         board_checkpoint = np.copy(
             self.board[drop:drop + tetromino_height, location:location + tetromino_width])
 
@@ -269,10 +286,12 @@ class Tetris:
                        location:location + tetromino_width] = board_checkpoint
             return False
 
-        # Carving succeeded
+        # If nothing faield the carve then it succeeded
         return True
+
     @timings
     def move(self, rotations: int, location: int) -> None:
+        # Get
         piece = self.pieces.pop(0)
 
         tetromino, reverse_tetromino_topography = get_tetromino(
@@ -328,9 +347,11 @@ class Tetris:
 
         if self.moves_used >= self.M:
             self.state = False
+
     @timings
     def calculate_drop(self, drop_deltas) -> int:
         return min(drop_deltas) - 1
+
     @timings
     def calculate_drop_deltas(self, location, reverse_tetromino_topography, tetromino_width):
         board_topography = []
@@ -339,19 +360,19 @@ class Tetris:
             board_topography.append(result[0] if len(result) != 0 else 20)
 
         return np.array(board_topography) - np.array(reverse_tetromino_topography)
+
     @timings
     def get_state(self) -> tuple[np.array, int, int, int, int, bool]:
         return self.board, self.pieces[0], self.pieces[1], self.L - self.lines_cleared, self.M - self.moves_used, self.state
-    @timings
-    def await_for_warm_initial_config(self):
-        pass
+
     @timings
     def reset(self) -> None:
-        self.random_piece_generator.generate_pieces()
+        self.random_piece_generator.reset()
         self.board[:, :] = False
         self.pieces.clear()
 
         self.load_warm_reset()
+
     @timings
     def load_warm_reset(self) -> None:
         if self.warm_reset:
@@ -359,6 +380,7 @@ class Tetris:
             self.conn.send('continue')
         else:
             self._generate_initial_config()
+
     @timings
     def terminate(self):
         self.conn.send('terminate')
@@ -373,4 +395,5 @@ def warm_reset_worker(conn: multiprocessing.Pipe, warm_reset_tetris):
             break
 
         warm_reset_tetris.reset()
-        conn.send((np.copy(warm_reset_tetris.board), warm_reset_tetris.pieces.copy()))
+        conn.send((np.copy(warm_reset_tetris.board),
+                  warm_reset_tetris.pieces.copy()))
