@@ -1,13 +1,18 @@
+import unittest
 import tetris
-import numpy as np
-import time
+
+class TestTetris(unittest.TestCase):
+    def test_full(self):
+        game = tetris.Tetris(15, 40, debug=True)
+        for move in game.solution[::-1]:
+            game.move(move[0], move[1])
+        self.assertTrue(game.state)
+        game.terminate()
 
 if __name__ == '__main__':
-    timer = time.time()
-    game = tetris.Tetris(15, 40, warm_reset=True)
-    for _ in range(5):
-        game.reset()
-        print(game.board, game.pieces, len(game.pieces))
+    game = tetris.Tetris(3, 5, warm_reset=False, debug=True)
+    print(game.board, game.pieces)
+    for move in game.solution[::-1]:
+        game.move(move[0], move[1])
+        print(game.board, move, game.state)
     game.terminate()
-    timer = time.time() - timer
-    print(timer)

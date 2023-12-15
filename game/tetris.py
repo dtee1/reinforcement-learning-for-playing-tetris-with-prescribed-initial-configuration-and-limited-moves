@@ -1,9 +1,7 @@
-import importlib
 import numpy as np
 import random
 import multiprocessing
 from typing import Callable
-import time
 
 from tetris_algo_main import main
 
@@ -146,16 +144,48 @@ class CheckpointManager:
 
 
 class Tetris:
-    def __init__(self, L: int, M: int, warm_reset: bool = True):
+    def __init__(self, L: int, M: int, warm_reset: bool = True, render: bool = False, framerate: int = 30, debug: bool = False):
         # Hyperparameters
         self.L: int = L
         self.M: int = M
         self.warm_reset = warm_reset
+        self.render = render
 
         # State variables
         self.lines_cleared = 0
         self.moves_used = 0
         self.state = None
+
+        # Debug variables
+        self.debug = debug
+        if self.debug:
+            self.solution: list[tuple[int, int]] = []
+
+        if render:
+            import pygame
+            self.pygame = pygame
+
+            # Constants
+            self.WIDTH, self.HEIGHT = 400, 800
+            self.GRID_SIZE = 40
+
+            self.PIECE_COLOR = (99, 64, 247)
+            self.BOARD_COLOR = (255, 255, 255)
+
+            # Initialize Pygame
+            self.pygame.init()
+
+            # Set up the game window
+            self.screen = self.pygame.display.set_mode(
+                (self.WIDTH, self.HEIGHT))
+            self.pygame.display.set_caption("Tetris")
+
+            # Clock to control the frame rate
+            self.clock = self.pygame.time.Clock()
+            self.framerate = 30
+
+            # Disable warm reset
+            self.warm_reset = False
 
         # Components
         self.random_piece_generator: RandomPieceGenerator = RandomPieceGenerator()
@@ -164,19 +194,39 @@ class Tetris:
 
         # Warm reset components
         if self.warm_reset:
+            # Create the terminate event
             self.terminate_event = multiprocessing.Event()
-            self.queue = multiprocessing.Queue(maxsize=20)
-            warm_reset_tetris = Tetris(self.L, self.M, warm_reset=False)
 
+            # Create the queue that will store future initial configurations
+            self.queue = multiprocessing.Queue(maxsize=20)
+
+            # Create the game instance that will be used by the warm reset worker
+            warm_reset_tetris = Tetris(
+                self.L, self.M, warm_reset=False, render=False)
+
+            # Create the warm reset worker
             self.warm_reset_process = multiprocessing.Process(
                 target=warm_reset_worker, args=(self.queue, warm_reset_tetris, self.terminate_event))
 
+            # Create the forward-mode warm reset worker
             self.forward_warm_reset_process = multiprocessing.Process(
                 target=forward_warm_reset_worker, args=(self.queue, self.terminate_event, self.L, self.M))
+
+            # Start both workers
             self.warm_reset_process.start()
             self.forward_warm_reset_process.start()
 
+        # Initiate a reset
         self.load_warm_reset()
+
+    def render_frame(self, board: np.array):
+        for y in range(board.shape[0]):
+            for x in range(board.shape[1]):
+                color = self.PIECE_COLOR if board[y, x] else self.BOARD_COLOR
+                self.pygame.draw.rect(self.screen, color, (x * self.GRID_SIZE,
+                                                           y * self.GRID_SIZE, self.GRID_SIZE, self.GRID_SIZE))
+        self.pygame.display.flip()
+        self.clock.tick(self.framerate)
 
     # Carving Approach
     def _generate_initial_config(self) -> None:
@@ -205,14 +255,21 @@ class Tetris:
             # If it is successful then add the piece to the sequence
             if self.carve(random_piece, rotations, location, len(self.random_piece_generator) == 7):
                 self.pieces.append(random_piece)
+                if self.debug:
+                    self.solution.append((rotations, location))
                 self.random_piece_generator.delete_last_generated_random_piece()
+                if self.render:
+                    self.render_frame(np.copy(self.board))
             # Else add a checkpoint attempt and load checkpoint if limits have been reached
-            else:
+            if not self.carve(random_piece, rotations, location, len(self.random_piece_generator) == 7):
                 if checkpoint_manager.add_attempt():
                     checkpoint, reverted = checkpoint_manager.load_checkpoint()
                     self.board = np.copy(checkpoint)
                     self.pieces = self.pieces[:len(self.random_piece_generator) - (
                         14 if reverted else 7)]
+                    if self.debug:
+                        self.solution = self.solution[:len(self.random_piece_generator) - (
+                            14 if reverted else 7)]
                     self.random_piece_generator.generate_pieces()
 
         # If less pieces were used than the allows maximum then pad out the pieces randomly
@@ -291,9 +348,10 @@ class Tetris:
         return True
 
     def move(self, rotations: int, location: int) -> None:
-        # Get
+        # Get the next piece
         piece = self.pieces.pop()
 
+        # Get the tetromino and unpack it's information
         tetromino, reverse_tetromino_topography = get_tetromino(
             piece, rotations)
 
@@ -301,6 +359,7 @@ class Tetris:
         tetromino_width = tetromino.shape[1]
         location = min(location, 10-tetromino_width)
 
+        # Calculate the drop height
         drop_deltas = self.calculate_drop_deltas(
             location, reverse_tetromino_topography, tetromino_width)
         drop = self.calculate_drop(drop_deltas)
@@ -312,41 +371,51 @@ class Tetris:
 
         # Insert Block
         self.board[drop:drop + tetromino.shape[0],
-                   location:location + tetromino_width] = tetromino
-
+                   location:location + tetromino_width] |= tetromino
         self.moves_used += 1
 
         # Clear lines
         rows_all_trues = np.all(
             self.board[drop:drop + tetromino.shape[0], :], axis=1)
 
+        # Count the number of lines that were cleared
         rows_cleared = np.count_nonzero(rows_all_trues)
 
         # If no lines cleared
         if rows_cleared == 0:
             if self.moves_used >= self.M:
                 self.state = False
+            if self.render:
+                self.render_frame(np.copy(self.board))
             return
 
+        # Collect the indices of all lines that need to be cleared
         indices_to_clear = []
-
         for row_index, row in enumerate(rows_all_trues):
             if row:
                 indices_to_clear.append(drop + row_index)
 
         indices_left = [x for x in range(0, 20) if x not in indices_to_clear]
 
+        # Apply the line clears
         self.board = self.board[indices_left]
         rows_to_add = np.full((rows_cleared, 10), False)
         self.board = np.vstack((rows_to_add, self.board))
 
-        self.lines_cleared -= rows_cleared
+        self.lines_cleared += rows_cleared
 
+        if self.render:
+            self.render_frame(np.copy(self.board))
+
+        # Check for win condition
         if self.lines_cleared >= self.L:
             self.state = True
+            return
 
+        # Check for loose condition
         if self.moves_used >= self.M:
             self.state = False
+            return
 
     def calculate_drop(self, drop_deltas) -> int:
         return min(drop_deltas) - 1
@@ -376,10 +445,25 @@ class Tetris:
             self._generate_initial_config()
 
     def terminate(self):
-        self.terminate_event.set()
-        self.queue.close()
-        self.warm_reset_process.join()
-        self.forward_warm_reset_process.join()
+        # If using warm reset then we need to ensure we close all processes
+        if self.warm_reset:
+            # Set the terminate event to terminate processes
+            self.terminate_event.set()
+
+            # Clear the queue to ensure processes are not prevented from terminating due to being stuck on a full queue
+            while not self.queue.empty():
+                self.queue.get()
+
+            # Close the queue
+            self.queue.close()
+
+            # Wait for processes to finish
+            self.warm_reset_process.join()
+            self.forward_warm_reset_process.join()
+
+        # If using render then quit pygame
+        if self.render:
+            self.pygame.quit()
 
 
 def warm_reset_worker(queue: multiprocessing.Queue, warm_reset_tetris, terminate_event: multiprocessing.Event):
