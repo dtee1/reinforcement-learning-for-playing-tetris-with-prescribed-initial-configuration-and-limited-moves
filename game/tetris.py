@@ -17,7 +17,7 @@ piece_translations = {
 
 
 def translate(batch: list):
-    return [(game.board.astype(bool), [random.randint(0, 6)] + [piece_translations[letter] for letter in game.sequence][::-1]) for game in batch]
+    return [(game.board.astype(bool), [random.randint(0, 6)] + [piece_translations[letter] for letter in game.sequence]) for game in batch]
 
 
 tetrominos = (
@@ -64,7 +64,6 @@ def get_tetromino(piece: int, rotations: int) -> tuple[np.array, tuple[int, ...]
 class RandomPieceGenerator:
     def __init__(self) -> None:
         self.pieces = []
-        self.last_generated_random_piece_index = None
 
     def generate_pieces(self) -> None:
         self.pieces = list(range(7))
@@ -72,11 +71,10 @@ class RandomPieceGenerator:
     def _regenerate(method: Callable) -> Callable[..., tuple[any, bool]]:
         def wrapper(self, *args, **kwargs) -> tuple[any, bool]:
             regenerated = False
-
             if not self.pieces:
                 self.generate_pieces()
                 regenerated = True
-
+            
             method_result = method(self, *args, **kwargs)
 
             return method_result, regenerated
@@ -84,12 +82,11 @@ class RandomPieceGenerator:
 
     @_regenerate
     def get_random_piece(self):
-        self.last_generated_random_piece_index = random.randint(
-            0, len(self.pieces) - 1)
-        return self.pieces[self.last_generated_random_piece_index]
+        random_piece_index = random.randint(0, len(self.pieces) - 1)
+        return self.pieces[random_piece_index], random_piece_index
 
-    def delete_last_generated_random_piece(self):
-        del self.pieces[self.last_generated_random_piece_index]
+    def delete_index(self, index):
+        del self.pieces[index]
 
     @_regenerate
     def _generate_sequence(self) -> None:
@@ -106,7 +103,6 @@ class RandomPieceGenerator:
 
     def reset(self) -> None:
         self.pieces.clear()
-        self.last_generated_random_piece_index = None
 
     def __len__(self) -> int:
         return len(self.pieces)
@@ -134,13 +130,11 @@ class CheckpointManager:
 
         if len(self.checkpoints) > 1 and self.checkpoint_uses > self.max_checkpoint_uses:
             del self.checkpoints[-1]
-            reverted = True
             self.checkpoint_uses = 0
         else:
-            reverted = False
             self.checkpoint_uses += 1
 
-        return self.checkpoints[-1], reverted
+        return self.checkpoints[-1]
 
 
 class Tetris:
@@ -237,13 +231,20 @@ class Tetris:
         checkpoint_manager = CheckpointManager()
 
         # While a piece sequence hasn't been found and the last line hasn't been broken
-        while (len(self.pieces) < self.M) and np.count_nonzero(self.board[-1]) > 8:
+        while np.count_nonzero(self.board[-1]) > 8:
             # Get a random piece from the generator
-            random_piece, regenerated = self.random_piece_generator.get_random_piece()
+            (random_piece, random_piece_index), regenerated = self.random_piece_generator.get_random_piece()
 
             # If the generator regenerated then add a checkpoint
             if regenerated:
-                checkpoint_manager.add_checkpoint(np.copy(self.board))
+                if self.debug:
+                    pieces_checkpoint = (
+                        list(self.pieces), list(self.solution))
+                else:
+                    pieces_checkpoint = list(self.pieces)
+
+                checkpoint_manager.add_checkpoint(
+                    (np.copy(self.board), pieces_checkpoint))
 
             # Get some extra information
             rotations = random.randint(0, 3)
@@ -253,31 +254,35 @@ class Tetris:
 
             # Attempt a carve
             # If it is successful then add the piece to the sequence
-            if self.carve(random_piece, rotations, location, len(self.random_piece_generator) == 7):
-                self.pieces.append(random_piece)
+            if (len(self.pieces) < self.M) and self.carve(random_piece, rotations, location, not self.pieces):
+                self.pieces.insert(0, random_piece)
                 if self.debug:
-                    self.solution.append((rotations, location))
-                self.random_piece_generator.delete_last_generated_random_piece()
+                    self.solution.insert(0, (rotations, location))
+
+                self.random_piece_generator.delete_index(random_piece_index)
+
                 if self.render:
                     self.render_frame(np.copy(self.board))
             # Else add a checkpoint attempt and load checkpoint if limits have been reached
-            if not self.carve(random_piece, rotations, location, len(self.random_piece_generator) == 7):
-                if checkpoint_manager.add_attempt():
-                    checkpoint, reverted = checkpoint_manager.load_checkpoint()
-                    self.board = np.copy(checkpoint)
-                    self.pieces = self.pieces[:len(self.random_piece_generator) - (
-                        14 if reverted else 7)]
-                    if self.debug:
-                        self.solution = self.solution[:len(self.random_piece_generator) - (
-                            14 if reverted else 7)]
-                    self.random_piece_generator.generate_pieces()
+            else:
+                if (len(self.pieces) >= self.M) or checkpoint_manager.add_attempt():
+                    board_checkpoint, pieces_checkpoint = checkpoint_manager.load_checkpoint()
 
+                    if self.debug:
+                        self.solution = list(pieces_checkpoint[1])
+                        pieces_checkpoint = list(pieces_checkpoint[0])
+
+                    self.board = np.copy(board_checkpoint)
+                    self.pieces = list(pieces_checkpoint)
+
+                    self.random_piece_generator.generate_pieces()
+        '''
         # If less pieces were used than the allows maximum then pad out the pieces randomly
         if (len(self.pieces) <= self.M):
             padding = self.random_piece_generator.get_random_sequence(
                 self.M - len(self.pieces) + 1)
-            padding.reverse()
-            self.pieces[:0] = padding
+            self.pieces.extend(padding)
+        '''
 
     def carve(self, piece: int, rotations: int, location: int, allow_partial: bool) -> bool:
         # Unpack information
@@ -298,7 +303,7 @@ class Tetris:
 
         # If partial carve is allowed then try every possible different push, else just try the maximum push
         increments = tetromino_height if allow_partial else 1
-        for increment in range(increments):
+        for _ in range(increments):
             if self.calculate_carve(drop, location, tetromino, reverse_tetromino_topography, allow_partial):
                 return True
             drop -= 1
@@ -317,7 +322,7 @@ class Tetris:
         if not allow_partial:
             # Calculate overlap
             board_slice = self.board[drop:drop + tetromino_height,
-                                     location:location + tetromino_width]
+                                     location:location + tetromino_width] 
             overlap = np.all(np.logical_not(tetromino) | board_slice)
 
             # If no overlap then carving failed
@@ -349,7 +354,7 @@ class Tetris:
 
     def move(self, rotations: int, location: int) -> None:
         # Get the next piece
-        piece = self.pieces.pop()
+        piece = self.pieces.pop(0)
 
         # Get the tetromino and unpack it's information
         tetromino, reverse_tetromino_topography = get_tetromino(
@@ -429,7 +434,7 @@ class Tetris:
         return np.array(board_topography) - np.array(reverse_tetromino_topography)
 
     def get_state(self) -> tuple[np.array, int, int, int, int, bool]:
-        return self.board, self.pieces[-1], self.pieces[-2], self.L - self.lines_cleared, self.M - self.moves_used, self.state
+        return self.board, self.pieces[0], self.pieces[1], self.L - self.lines_cleared, self.M - self.moves_used, self.state
 
     def reset(self) -> None:
         self.random_piece_generator.reset()
