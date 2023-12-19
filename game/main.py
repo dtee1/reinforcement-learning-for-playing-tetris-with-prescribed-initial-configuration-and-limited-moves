@@ -1,6 +1,7 @@
 import unittest
 import tetris
 import numpy as np
+import time
 
 class TestRandomPieceGeneration(unittest.TestCase):
     def test_regenerate(self):
@@ -56,4 +57,7 @@ class TestTetris(unittest.TestCase):
         self.assertTrue(game.state, 'Carving inversion failed')
 
 if __name__ == '__main__':
-    unittest.main()
+    # unittest.main()
+    game = tetris.Tetris(3, 6, render=True, framerate=10, debug=True)
+    print(game.pieces, game.solution)
+    time.sleep(5)
