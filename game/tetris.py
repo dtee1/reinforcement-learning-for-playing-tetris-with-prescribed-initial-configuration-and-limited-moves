@@ -276,13 +276,12 @@ class Tetris:
                     self.pieces = list(pieces_checkpoint)
 
                     self.random_piece_generator.generate_pieces()
-        '''
+                    
         # If less pieces were used than the allows maximum then pad out the pieces randomly
         if (len(self.pieces) <= self.M):
             padding = self.random_piece_generator.get_random_sequence(
                 self.M - len(self.pieces) + 1)
             self.pieces.extend(padding)
-        '''
 
     def carve(self, piece: int, rotations: int, location: int, allow_partial: bool) -> bool:
         # Unpack information
