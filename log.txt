@@ -1,1 +1,0 @@
-The average time per winnable game for 8/40 goal/tetrominoes was 0.8597773710886637 seconds. 3 games were winnable. It took 2.579332113265991 seconds to pass through all 100 seeds. with a max_attempts of 1000.
