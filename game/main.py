@@ -58,6 +58,5 @@ class TestTetris(unittest.TestCase):
 
 if __name__ == '__main__':
     # unittest.main()
-    game = tetris.Tetris(3, 6, render=True, framerate=10, debug=True)
-    print(game.pieces, game.solution)
+    game = tetris.Tetris(10, 30, render=True, framerate=10, debug=True)
     time.sleep(5)

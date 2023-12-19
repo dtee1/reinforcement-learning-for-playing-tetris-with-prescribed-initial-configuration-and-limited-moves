@@ -176,7 +176,7 @@ class Tetris:
 
             # Clock to control the frame rate
             self.clock = self.pygame.time.Clock()
-            self.framerate = 30
+            self.framerate = framerate
 
             # Disable warm reset
             self.warm_reset = False
@@ -276,7 +276,7 @@ class Tetris:
                     self.pieces = list(pieces_checkpoint)
 
                     self.random_piece_generator.generate_pieces()
-                    
+
         # If less pieces were used than the allows maximum then pad out the pieces randomly
         if (len(self.pieces) <= self.M):
             padding = self.random_piece_generator.get_random_sequence(
