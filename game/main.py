@@ -58,5 +58,9 @@ class TestTetris(unittest.TestCase):
 
 if __name__ == '__main__':
     # unittest.main()
-    game = tetris.Tetris(10, 30, render=True, framerate=10, debug=True)
-    time.sleep(5)
+    try:
+        while True:
+            game = tetris.Tetris(10, 30, render=True, framerate=2, debug=True)
+            game.reset()
+    except KeyboardInterrupt:
+        pass
