@@ -58,9 +58,14 @@ class TestTetris(unittest.TestCase):
 
 if __name__ == '__main__':
     # unittest.main()
-    try:
-        while True:
-            game = tetris.Tetris(10, 30, render=True, framerate=2, debug=True)
+    counter = 0
+    timer = time.time()
+    while True:
+        try:
+            game = tetris.Tetris(10, 30, warm_reset=False, render=False, framerate=2)
             game.reset()
-    except KeyboardInterrupt:
-        pass
+
+            counter += 1
+            print(f'Games Created: {counter} - {counter / (time.time() - timer):.2f} Games/Second', end='\r')
+        except KeyboardInterrupt:
+            break
